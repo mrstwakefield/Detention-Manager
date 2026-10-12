@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1976d2">
+  <title>Detention Manager</title>
+  <style>
+    :root { color-scheme: light; --blue:#1976d2; --ink:#172033; --muted:#667085; --line:#e4e7ec; --bg:#f4f6f8; }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:20px; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { max-width:1000px; margin:0 auto; }
+    h1 { margin:0 0 6px; font-size:1.7rem; }
+    .intro { color:var(--muted); margin:0 0 20px; }
+    .card { background:white; border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:16px; box-shadow:0 2px 8px #17203308; }
+    .form-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+    label { display:block; font-size:.88rem; font-weight:650; margin-bottom:5px; }
+    input, select { width:100%; min-width:0; padding:11px 10px; border:1px solid #cfd4dc; border-radius:8px; background:white; font:inherit; }
+    button { border:0; border-radius:8px; padding:10px 14px; font:inherit; font-weight:650; cursor:pointer; }
+    .primary { background:var(--blue); color:white; margin-top:14px; }
+    .delete { background:#fee4e2; color:#b42318; padding:7px 10px; }
+    .day-heading { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:0 0 10px; font-size:1.1rem; }
+    .count { color:var(--muted); font-size:.85rem; font-weight:500; }
+    .entry { display:flex; justify-content:space-between; align-items:center; gap:12px; background:#f8fafc; border:1px solid var(--line); border-radius:10px; padding:11px; margin-top:8px; }
+    .entry-main { min-width:0; overflow-wrap:anywhere; }
+    .entry-title { font-weight:700; }
+    .entry-meta { color:#475467; font-size:.9rem; margin-top:3px; }
+    .empty { color:var(--muted); font-size:.92rem; padding:5px 0; }
+    .notice { background:#fffaeb; border:1px solid #fedf89; border-radius:10px; padding:12px 14px; color:#7a2e0e; font-size:.9rem; margin-bottom:16px; }
+    .toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+    .secondary { background:#eaecf0; color:#344054; }
+    @media (max-width:700px) { body { padding:12px; } .form-grid { grid-template-columns:1fr 1fr; } h1 { font-size:1.45rem; } }
+    @media (max-width:430px) { .form-grid { grid-template-columns:1fr; } .entry { align-items:flex-start; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>📋 Detention Manager</h1>
+  <p class="intro">Add, organise and remove detentions for Monday to Friday.</p>
+
+  <div class="notice">
+    <strong>Important:</strong> this version saves data in this browser on this device only. It does not synchronise with colleagues. Use only in line with your school's data-protection policy.
+  </div>
+
+  <section class="card">
+    <form id="detention-form">
+      <div class="form-grid">
+        <div>
+          <label for="name">Student name</label>
+          <input id="name" name="name" autocomplete="off" required placeholder="Enter student name">
+        </div>
+        <div>
+          <label for="year">Year group</label>
+          <select id="year" name="year" required>
+            <option>Year 7</option><option>Year 8</option><option>Year 9</option>
+            <option>Year 10</option><option>Year 11</option><option>Year 12</option><option>Year 13</option>
+          </select>
+        </div>
+        <div>
+          <label for="day">Day</label>
+          <select id="day" name="day" required>
+            <option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option>
+          </select>
+        </div>
+        <div>
+          <label for="type">Detention session</label>
+          <select id="type" name="type" required>
+            <option>Break</option><option>Lunch</option><option>After School</option>
+          </select>
+        </div>
+        <div>
+          <label for="time">Duration</label>
+          <select id="time" name="time" required>
+            <option>20 mins</option><option>30 mins</option><option>40 mins</option><option>60 mins</option><option>SNR</option>
+          </select>
+        </div>
+        <div>
+          <label for="reason">Reason</label>
+          <select id="reason" name="reason" required>
+            <option>Homework</option><option>Transition</option><option>Disruption</option>
+            <option>Equipment</option><option>Late to Lesson</option><option>Uniform</option>
+            <option>Incomplete Classwork</option><option>Off Task</option><option>Rudeness</option>
+            <option>Defiance</option><option>Truancy</option><option>Other</option>
+          </select>
+        </div>
+      </div>
+      <button class="primary" type="submit">+ Add detention</button>
+    </form>
+  </section>
+
+  <div class="toolbar" style="margin-bottom:12px">
+    <strong>Weekly detention list</strong>
+    <button class="secondary" id="export-btn" type="button">Export CSV</button>
+  </div>
+  <div id="list" aria-live="polite"></div>
+</main>
+
+<script>
+(() => {
+  const STORAGE_KEY = "detentions";
+  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+  const form = document.getElementById("detention-form");
+  const list = document.getElementById("list");
+
+  let data = [];
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    if (Array.isArray(saved)) data = saved;
+  } catch (error) {
+    data = [];
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      render();
+    } catch (error) {
+      alert("The browser could not save this detention list. Check device storage settings.");
+    }
+  }
+
+  function safeText(value) {
+    return String(value ?? "").replace(/[&<>"']/g, char => ({
+      "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+    })[char]);
+  }
+
+  function render() {
+    list.innerHTML = "";
+    days.forEach(day => {
+      const entries = data.filter(item => item.day === day);
+      const section = document.createElement("section");
+      section.className = "card";
+      section.innerHTML = `<h2 class="day-heading"><span>${day}</span><span class="count">${entries.length} ${entries.length === 1 ? "detention" : "detentions"}</span></h2>`;
+
+      if (!entries.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty";
+        empty.textContent = "No detentions added.";
+        section.appendChild(empty);
+      } else {
+        entries.forEach(item => {
+          const row = document.createElement("div");
+          row.className = "entry";
+          row.innerHTML = `
+            <div class="entry-main">
+              <div class="entry-title">${safeText(item.name)} · ${safeText(item.year)}</div>
+              <div class="entry-meta">${safeText(item.type)} · ${safeText(item.time)} · ${safeText(item.reason)}</div>
+            </div>
+            <button class="delete" type="button" aria-label="Delete detention for ${safeText(item.name)}">Delete</button>`;
+          row.querySelector("button").addEventListener("click", () => {
+            if (confirm(`Delete the detention for ${item.name}?`)) {
+              data = data.filter(entry => entry.id !== item.id);
+              save();
+            }
+          });
+          section.appendChild(row);
+        });
+      }
+      list.appendChild(section);
+    });
+  }
+
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    const name = document.getElementById("name").value.trim();
+    if (!name) return;
+
+    data.push({
+      id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+      name,
+      year: document.getElementById("year").value,
+      day: document.getElementById("day").value,
+      type: document.getElementById("type").value,
+      time: document.getElementById("time").value,
+      reason: document.getElementById("reason").value
+    });
+    save();
+    document.getElementById("name").value = "";
+    document.getElementById("name").focus();
+  });
+
+  document.getElementById("export-btn").addEventListener("click", () => {
+    const headers = ["Student name", "Year", "Day", "Session", "Duration", "Reason"];
+    const rows = data.map(item => [item.name, item.year, item.day, item.type, item.time, item.reason]);
+    const csvCell = value => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const csv = [headers, ...rows].map(row => row.map(csvCell).join(",")).join("\r\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "detentions.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
